@@ -605,4 +605,1171 @@
                 document.getElementById('adminLogin').style.display = 'none';
                 document.getElementById('adminPanel').style.display = 'block';
                 errorDiv.style.display = 'none';
+            } else {
+                errorDiv.style.display = 'block';
+                document.getElementById('adminCode').value = '';
+                document.getElementById('adminCode').focus();
             }
+        }
+
+        function checkAdminAuth() {
+            const authStatus = localStorage.getItem('zepitaBotAdminAuth');
+            if (authStatus === 'true') {
+                isAdminAuthenticated = true;
+                document.getElementById('adminLogin').style.display = 'none';
+                document.getElementById('adminPanel').style.display = 'block';
+            }
+        }
+
+        function logoutAdmin() {
+            if (confirm('¿Estás seguro de cerrar sesión?')) {
+                isAdminAuthenticated = false;
+                localStorage.removeItem('zepitaBotAdminAuth');
+                document.getElementById('adminPanel').style.display = 'none';
+                document.getElementById('adminLogin').style.display = 'block';
+                
+                // Limpiar el campo de código
+                const adminCodeInput = document.getElementById('adminCode');
+                if (adminCodeInput) {
+                    adminCodeInput.value = '';
+                }
+                
+                // Ocultar mensaje de error si existe
+                const errorDiv = document.getElementById('loginError');
+                if (errorDiv) {
+                    errorDiv.style.display = 'none';
+                }
+            }
+        }
+
+        function initVoiceRecognition() {
+            if ('webkitSpeechRecognition' in window) {
+                recognition = new webkitSpeechRecognition();
+                recognition.continuous = false;
+                recognition.lang = 'es-ES';
+                
+                recognition.onresult = function(event) {
+                    const transcript = event.results[0][0].transcript;
+                    document.getElementById('userMessage').value = transcript;
+                    sendMessage();
+                };
+                
+                recognition.onend = function() {
+                    isVoiceActive = false;
+                    document.getElementById('voiceBtn').classList.remove('active');
+                };
+            }
+        }
+
+        function toggleVoice() {
+            if (!recognition) {
+                alert('Tu navegador no soporta reconocimiento de voz. Por favor usa Chrome o Edge.');
+                return;
+            }
+
+            if (isVoiceActive) {
+                recognition.stop();
+                isVoiceActive = false;
+                document.getElementById('voiceBtn').classList.remove('active');
+            } else {
+                recognition.start();
+                isVoiceActive = true;
+                document.getElementById('voiceBtn').classList.add('active');
+            }
+        }
+
+        function speak(text) {
+            if (communicationMode === 'voice' && 'speechSynthesis' in window) {
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'es-ES';
+                utterance.rate = 0.9;
+                window.speechSynthesis.speak(utterance);
+            }
+        }
+
+        function getAllThursdays(year) {
+            const thursdays = [];
+            let date = new Date(year, 0, 1); // Primer día del año
+            
+            // Encontrar el primer jueves del año
+            while (date.getDay() !== 4) { // 4 = Jueves
+                date.setDate(date.getDate() + 1);
+            }
+            
+            // Recopilar todos los jueves del año
+            while (date.getFullYear() === year) {
+                thursdays.push(new Date(date));
+                date.setDate(date.getDate() + 7); // Siguiente jueves
+            }
+            
+            return thursdays;
+        }
+
+        function populateThursdays() {
+            const selector = document.getElementById('thursdaySelector');
+            const thursdays = getAllThursdays(YEAR);
+            const today = new Date();
+            
+            thursdays.forEach(thursday => {
+                const option = document.createElement('option');
+                const dateStr = thursday.toISOString().split('T')[0]; // YYYY-MM-DD
+                const displayDate = thursday.toLocaleDateString('es-BO', { 
+                    weekday: 'long', 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric' 
+                });
+                
+                option.value = dateStr;
+                option.textContent = displayDate;
+                
+                // Marcar como "pasado" si ya venció
+                if (isMenuExpired(thursday)) {
+                    option.textContent += ' (Expirado)';
+                    option.style.color = '#999';
+                }
+                
+                selector.appendChild(option);
+            });
+            
+            // Seleccionar el jueves más cercano por defecto
+            const nextThursday = getNextThursday();
+            if (nextThursday) {
+                selector.value = nextThursday.toISOString().split('T')[0];
+                updateThursdayDisplay();
+            }
+        }
+
+        function getNextThursday() {
+            const today = new Date();
+            const thursdays = getAllThursdays(YEAR);
+            
+            // Encontrar el próximo jueves que no haya expirado
+            for (let thursday of thursdays) {
+                if (!isMenuExpired(thursday)) {
+                    return thursday;
+                }
+            }
+            
+            return thursdays[0]; // Si todos expiraron, devolver el primero
+        }
+
+        function updateThursdayDisplay() {
+            const selector = document.getElementById('thursdaySelector');
+            const dateStr = selector.value;
+            
+            if (!dateStr) {
+                document.getElementById('thursdayDisplay').textContent = '';
+                return;
+            }
+            
+            currentThursday = new Date(dateStr + 'T00:00:00');
+            currentWeek = dateStr; // Usamos la fecha como identificador
+            
+            const displayDate = currentThursday.toLocaleDateString('es-BO', { 
+                weekday: 'long', 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+            });
+            
+            document.getElementById('thursdayDisplay').textContent = `Menú para: ${displayDate}`;
+            
+            // Mostrar advertencias según el estado del menú
+            const deadlineWarning = document.getElementById('deadlineWarning');
+            const menuExpired = document.getElementById('menuExpired');
+            const menuDeleteWarning = document.getElementById('menuDeleteWarning');
+            
+            if (isMenuExpired(currentThursday)) {
+                deadlineWarning.style.display = 'none';
+                menuExpired.style.display = 'block';
+                menuDeleteWarning.style.display = 'none';
+            } else if (shouldMenuBeDeleted(currentThursday)) {
+                deadlineWarning.style.display = 'none';
+                menuExpired.style.display = 'none';
+                menuDeleteWarning.style.display = 'block';
+            } else {
+                deadlineWarning.style.display = 'block';
+                menuExpired.style.display = 'none';
+                menuDeleteWarning.style.display = 'none';
+            }
+            
+            displayMenu();
+        }
+
+        function isMenuExpired(thursdayDate) {
+            const now = new Date();
+            const deadline = new Date(thursdayDate);
+            deadline.setHours(18, 0, 0, 0); // Jueves a las 18:00
+            
+            return now > deadline;
+        }
+
+        function shouldMenuBeDeleted(thursdayDate) {
+            const now = new Date();
+            const deleteDate = new Date(thursdayDate);
+            deleteDate.setDate(deleteDate.getDate() + 3); // 3 días después
+            deleteDate.setHours(23, 59, 59, 999); // Domingo a las 23:59
+            
+            return now > deleteDate;
+        }
+
+        function cleanExpiredMenus() {
+            // Eliminar menús que tienen más de 3 días
+            currentMenu = currentMenu.filter(dish => {
+                const thursdayDate = new Date(dish.week + 'T00:00:00');
+                return !shouldMenuBeDeleted(thursdayDate);
+            });
+            
+            // Eliminar pedidos de menús eliminados
+            const validWeeks = new Set(currentMenu.map(d => d.week));
+            
+            Object.keys(userOrders).forEach(userId => {
+                const userData = userOrders[userId];
+                if (userData.orders) {
+                    userData.orders = userData.orders.filter(order => validWeeks.has(order.week));
+                    
+                    // Si el usuario no tiene pedidos, eliminar su entrada
+                    if (userData.orders.length === 0) {
+                        delete userOrders[userId];
+                    }
+                }
+            });
+            
+            saveToStorage();
+        }
+
+        function getWeekNumber(date) {
+            const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+            const dayNum = d.getUTCDay() || 7;
+            d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+            const yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1));
+            return Math.ceil((((d - yearStart) / 86400000) + 1)/7);
+        }
+
+        function showSection(section) {
+            document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            
+            document.getElementById(section).classList.add('active');
+            event.target.classList.add('active');
+
+            if (section === 'orders') {
+                displayOrders();
+            }
+        }
+
+        function addDishToMenu() {
+            const name = document.getElementById('dishName').value.trim();
+            const price = parseFloat(document.getElementById('dishPrice').value);
+            const description = document.getElementById('dishDescription').value.trim();
+
+            if (!name || !price) {
+                alert('Por favor completa el nombre y precio del plato');
+                return;
+            }
+
+            if (!currentWeek) {
+                alert('Por favor selecciona un jueves para el menú');
+                return;
+            }
+
+            // Verificar si el menú ya expiró
+            if (isMenuExpired(currentThursday)) {
+                alert('❌ No se pueden agregar platos a este menú. El plazo venció el jueves a las 18:00 hrs.');
+                return;
+            }
+
+            const dish = {
+                id: Date.now(),
+                name: name,
+                price: price,
+                description: description,
+                week: currentWeek
+            };
+
+            currentMenu.push(dish);
+            saveToStorage();
+            displayMenu();
+
+            // Limpiar formulario
+            document.getElementById('dishName').value = '';
+            document.getElementById('dishPrice').value = '';
+            document.getElementById('dishDescription').value = '';
+
+            alert('✅ Plato agregado al menú');
+        }
+
+        function displayMenu() {
+            const menuList = document.getElementById('menuList');
+            const weekMenu = currentMenu.filter(dish => dish.week === currentWeek);
+            
+            if (weekMenu.length === 0) {
+                menuList.innerHTML = '<p style="text-align: center; color: #999; font-size: 1.2em;">No hay platos agregados aún</p>';
+                return;
+            }
+
+            menuList.innerHTML = weekMenu.map(dish => `
+                <div class="menu-item">
+                    <div class="menu-item-header">
+                        <h3>${dish.name}</h3>
+                        <span class="price">Bs. ${dish.price.toFixed(2)}</span>
+                    </div>
+                    ${dish.description ? `<p style="color: #666;">${dish.description}</p>` : ''}
+                    <button class="btn btn-danger" onclick="removeDish(${dish.id})" style="margin-top: 10px;">
+                        🗑️ Eliminar
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        function removeDish(dishId) {
+            if (confirm('¿Estás seguro de eliminar este plato?')) {
+                currentMenu = currentMenu.filter(dish => dish.id !== dishId);
+                saveToStorage();
+                displayMenu();
+            }
+        }
+
+        function publishMenu() {
+            const weekMenu = currentMenu.filter(dish => dish.week === currentWeek);
+            
+            if (weekMenu.length === 0) {
+                alert('❌ No hay platos en el menú para publicar');
+                return;
+            }
+
+            const whatsappDiv = document.getElementById('whatsappShare');
+            
+            const thursdayDate = new Date(currentWeek + 'T00:00:00');
+            const displayDate = thursdayDate.toLocaleDateString('es-BO', { 
+                weekday: 'long', 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+            });
+            
+            let menuText = `🍽️ *MENÚ SEMANAL ZEPITA BOT*\n`;
+            menuText += `📅 ${displayDate}\n`;
+            menuText += `⏰ *Pedidos hasta el jueves a las 18:00 hrs*\n\n`;
+            
+            weekMenu.forEach((dish, index) => {
+                menuText += `${index + 1}. *${dish.name}* - Bs. ${dish.price.toFixed(2)}\n`;
+                if (dish.description) {
+                    menuText += `   ${dish.description}\n`;
+                }
+                menuText += `\n`;
+            });
+            
+            menuText += `\n📱 Haz tu pedido con Zepita Bot`;
+
+            const encodedText = encodeURIComponent(menuText);
+            const whatsappUrl = `https://wa.me/?text=${encodedText}`;
+
+            whatsappDiv.innerHTML = `
+                <div class="alert alert-success">
+                    ✅ ¡Menú listo para publicar!
+                </div>
+                <div class="whatsapp-section">
+                    <h3>📱 Compartir en WhatsApp</h3>
+                    <p style="font-size: 1.1em;">Comparte este menú con tu grupo de WhatsApp</p>
+                    <p style="font-size: 0.9em; margin-top: 10px;">
+                        <strong>Recuerda:</strong> Los pedidos se aceptarán hasta el jueves a las 18:00 hrs
+                    </p>
+                    <a href="${whatsappUrl}" target="_blank" class="whatsapp-link">
+                        📲 Abrir WhatsApp
+                    </a>
+                </div>
+            `;
+            whatsappDiv.style.display = 'block';
+
+            alert('✅ Menú publicado correctamente!');
+        }
+
+        function startChat() {
+            communicationMode = 'chat';
+            document.getElementById('communicationChoice').style.display = 'none';
+            document.getElementById('userInterface').style.display = 'block';
+            document.getElementById('communicationMode').textContent = '💬 Modo: Chat';
+            
+            askForUserName();
+        }
+
+        function startVoice() {
+            if (!('webkitSpeechRecognition' in window)) {
+                alert('Tu navegador no soporta reconocimiento de voz. Por favor usa el modo chat o abre esta página en Chrome/Edge.');
+                return;
+            }
+            
+            communicationMode = 'voice';
+            document.getElementById('communicationChoice').style.display = 'none';
+            document.getElementById('userInterface').style.display = 'block';
+            document.getElementById('communicationMode').textContent = '🎤 Modo: Voz';
+            
+            askForUserName();
+        }
+
+        function askForUserName() {
+            const welcomeMsg = '¡Hola! Soy Zepita Bot, tu asistente de menús. 😊\n\nPara comenzar, por favor dime tu nombre y apellido.';
+            addBotMessage(welcomeMsg);
+            speak(welcomeMsg);
+            
+            // Marcar que estamos esperando el nombre
+            waitingForName = true;
+        }
+
+        function addBotMessage(message) {
+            const messagesDiv = document.getElementById('chatMessages');
+            const messageEl = document.createElement('div');
+            messageEl.className = 'message bot';
+            messageEl.textContent = message;
+            messagesDiv.appendChild(messageEl);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function addUserMessage(message) {
+            const messagesDiv = document.getElementById('chatMessages');
+            const messageEl = document.createElement('div');
+            messageEl.className = 'message user';
+            messageEl.textContent = message;
+            messagesDiv.appendChild(messageEl);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('userMessage');
+            const message = input.value.trim();
+            
+            if (!message) return;
+            
+            addUserMessage(message);
+            input.value = '';
+            
+            processUserMessage(message);
+        }
+
+        function processUserMessage(message) {
+            const lowerMsg = message.toLowerCase();
+            
+            // Si estamos esperando el nombre del usuario
+            if (waitingForName) {
+                currentUserFullName = message.trim();
+                currentUser = currentUserFullName;
+                waitingForName = false;
+                
+                const response = `¡Mucho gusto, ${currentUserFullName}! 😊\n\n¿Te gustaría ver el menú de esta semana?`;
+                addBotMessage(response);
+                speak(response);
+                return;
+            }
+            
+            // Si acaba de ordenar algo, preguntamos si quiere agregar más
+            if (justOrdered) {
+                if (lowerMsg.includes('si') || lowerMsg.includes('sí') || lowerMsg.includes('otro') || lowerMsg.includes('más') || lowerMsg.includes('mas')) {
+                    justOrdered = false;
+                    showMenuToUser();
+                } else if (lowerMsg.includes('no') || lowerMsg.includes('listo') || lowerMsg.includes('suficiente') || lowerMsg.includes('terminar')) {
+                    justOrdered = false;
+                    const response = '¡Perfecto! Tu pedido ha sido registrado. Gracias por usar Zepita Bot. 😊\n\nSi necesitas agregar algo más, solo dímelo.';
+                    addBotMessage(response);
+                    speak(response);
+                } else {
+                    const response = '¿Deseas agregar otro plato a tu pedido? Responde "sí" o "no".';
+                    addBotMessage(response);
+                    speak(response);
+                }
+                return;
+            }
+            
+            if (lowerMsg.includes('menu') || lowerMsg.includes('menú') || lowerMsg.includes('ver') || lowerMsg.includes('mostrar') || lowerMsg.includes('si') || lowerMsg.includes('sí')) {
+                showMenuToUser();
+            } else if (lowerMsg.includes('pedir') || lowerMsg.includes('ordenar') || lowerMsg.includes('quiero')) {
+                const response = 'Por favor indica el número del plato que deseas ordenar. Por ejemplo: "Quiero el plato 1"';
+                addBotMessage(response);
+                speak(response);
+            } else if (lowerMsg.match(/\d+/)) {
+                const number = parseInt(lowerMsg.match(/\d+/)[0]);
+                orderDish(number, message);
+            } else {
+                const response = 'Puedo ayudarte a ver el menú o hacer tu pedido. ¿Qué te gustaría hacer?';
+                addBotMessage(response);
+                speak(response);
+            }
+        }
+
+        function showMenuToUser() {
+            const weekMenu = currentMenu.filter(dish => dish.week === currentWeek);
+            
+            if (weekMenu.length === 0) {
+                const response = 'Lo siento, aún no hay menú disponible para esta semana. 😔';
+                addBotMessage(response);
+                speak(response);
+                return;
+            }
+
+            // Verificar si el menú ya expiró
+            const thursdayDate = new Date(currentWeek + 'T00:00:00');
+            if (isMenuExpired(thursdayDate)) {
+                const response = 'Lo siento, el plazo para hacer pedidos de este menú ya venció (jueves 18:00 hrs). 😔';
+                addBotMessage(response);
+                speak(response);
+                return;
+            }
+
+            let menuHTML = '<div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin-top: 20px;">';
+            menuHTML += `<h3 style="color: #667eea; margin-bottom: 20px;">🍽️ Menú del ${currentThursday.toLocaleDateString('es-BO', { weekday: 'long', day: 'numeric', month: 'long' })}</h3>`;
+            
+            // Calcular tiempo restante
+            const now = new Date();
+            const deadline = new Date(thursdayDate);
+            deadline.setHours(18, 0, 0, 0);
+            const hoursLeft = Math.floor((deadline - now) / (1000 * 60 * 60));
+            
+            if (hoursLeft > 0 && hoursLeft <= 24) {
+                menuHTML += `<div class="alert alert-info" style="margin-bottom: 15px;">⏰ Tienes ${hoursLeft} horas para hacer tu pedido</div>`;
+            }
+            
+            let menuText = 'Aquí está el menú: ';
+            
+            weekMenu.forEach((dish, index) => {
+                menuHTML += `
+                    <div class="menu-item" style="margin-bottom: 15px;">
+                        <strong>${index + 1}. ${dish.name}</strong> - Bs. ${dish.price.toFixed(2)}<br>
+                        ${dish.description ? `<small>${dish.description}</small><br>` : ''}
+                        <button class="btn btn-primary" onclick="orderDishById(${dish.id}, ${index + 1})" style="margin-top: 10px;">
+                            🛒 Ordenar
+                        </button>
+                    </div>
+                `;
+                menuText += `${index + 1}, ${dish.name} por ${dish.price} bolivianos. `;
+            });
+            
+            menuHTML += '</div>';
+            document.getElementById('menuDisplay').innerHTML = menuHTML;
+            
+            const response = 'Aquí está el menú disponible. Puedes hacer clic en "Ordenar" o decirme el número del plato que deseas. 😊';
+            addBotMessage(response);
+            speak(menuText + response);
+        }
+
+        function orderDishById(dishId, dishNumber) {
+            const dish = currentMenu.find(d => d.id === dishId);
+            if (!dish) return;
+            
+            // Verificar si el menú ya expiró
+            const thursdayDate = new Date(dish.week + 'T00:00:00');
+            if (isMenuExpired(thursdayDate)) {
+                alert('❌ Este menú ya no acepta pedidos. El plazo venció el jueves a las 18:00 hrs.');
+                const response = 'Lo siento, este menú ya no acepta pedidos. El plazo de registro venció.';
+                addBotMessage(response);
+                speak(response);
+                return;
+            }
+            
+            const comment = prompt(`¿Algún comentario especial para tu ${dish.name}?\n(Por ejemplo: sin cebolla, bien cocido, etc.)\n\nPuedes dejarlo en blanco si no tienes comentarios.`);
+            
+            if (!userOrders[currentUser]) {
+                userOrders[currentUser] = {
+                    fullName: currentUserFullName,
+                    orders: []
+                };
+            }
+            
+            userOrders[currentUser].orders.push({
+                dishId: dish.id,
+                dishName: dish.name,
+                price: dish.price,
+                comment: comment || '',
+                week: currentWeek
+            });
+            
+            saveToStorage();
+            updateUserOrderSummary();
+            
+            // Activar el estado de "acaba de ordenar"
+            justOrdered = true;
+            
+            const response = `✅ Perfecto! He agregado ${dish.name} a tu pedido${comment ? ' con tus comentarios' : ''}.\n\n¿Deseas agregar otro plato más a tu pedido?`;
+            addBotMessage(response);
+            speak(response);
+        }
+
+        function orderDish(number, fullMessage) {
+            const weekMenu = currentMenu.filter(dish => dish.week === currentWeek);
+            
+            if (number < 1 || number > weekMenu.length) {
+                const response = 'Lo siento, ese número de plato no existe. Por favor elige un número válido del menú.';
+                addBotMessage(response);
+                speak(response);
+                return;
+            }
+            
+            const dish = weekMenu[number - 1];
+            
+            // Verificar si el menú ya expiró
+            const thursdayDate = new Date(dish.week + 'T00:00:00');
+            if (isMenuExpired(thursdayDate)) {
+                const response = 'Lo siento, este menú ya no acepta pedidos. El plazo de registro venció el jueves a las 18:00 hrs. 😔';
+                addBotMessage(response);
+                speak(response);
+                return;
+            }
+            
+            // Detectar si hay comentarios en el mensaje
+            let comment = '';
+            const commentPatterns = ['sin', 'con', 'extra', 'poco', 'mucho', 'bien', 'medio'];
+            if (commentPatterns.some(pattern => fullMessage.toLowerCase().includes(pattern))) {
+                comment = fullMessage;
+            }
+            
+            if (!userOrders[currentUser]) {
+                userOrders[currentUser] = {
+                    fullName: currentUserFullName,
+                    orders: []
+                };
+            }
+            
+            userOrders[currentUser].orders.push({
+                dishId: dish.id,
+                dishName: dish.name,
+                price: dish.price,
+                comment: comment,
+                week: currentWeek
+            });
+            
+            saveToStorage();
+            updateUserOrderSummary();
+            
+            // Activar el estado de "acaba de ordenar"
+            justOrdered = true;
+            
+            const response = `✅ Perfecto! He agregado ${dish.name} a tu pedido${comment ? ' con tus comentarios' : ''}.\n\n¿Deseas agregar otro plato más a tu pedido?`;
+            addBotMessage(response);
+            speak(response);
+        }
+
+        function updateUserOrderSummary() {
+            const userData = userOrders[currentUser];
+            if (!userData || !userData.orders) {
+                document.getElementById('orderSummary').innerHTML = '';
+                return;
+            }
+            
+            const orders = userData.orders;
+            const weekOrders = orders.filter(order => order.week === currentWeek);
+            
+            if (weekOrders.length === 0) {
+                document.getElementById('orderSummary').innerHTML = '';
+                return;
+            }
+            
+            let total = weekOrders.reduce((sum, order) => sum + order.price, 0);
+            
+            let html = '<div style="background: #e3f2fd; padding: 20px; border-radius: 10px; margin-top: 20px;">';
+            html += `<h3 style="color: #667eea;">📝 Pedido de ${currentUserFullName}</h3>`;
+            
+            weekOrders.forEach((order, index) => {
+                html += `
+                    <div style="background: white; padding: 15px; margin: 10px 0; border-radius: 8px;">
+                        <strong>${index + 1}. ${order.dishName}</strong> - Bs. ${order.price.toFixed(2)}<br>
+                        ${order.comment ? `<small style="color: #666;">💬 ${order.comment}</small>` : ''}
+                    </div>
+                `;
+            });
+            
+            html += `<div style="background: #28a745; color: white; padding: 15px; border-radius: 8px; margin-top: 15px; text-align: center;">
+                <strong style="font-size: 1.3em;">Total: Bs. ${total.toFixed(2)}</strong>
+            </div>`;
+            html += '</div>';
+            
+            document.getElementById('orderSummary').innerHTML = html;
+        }
+
+        function displayOrders() {
+            const ordersList = document.getElementById('ordersList');
+            const totalCost = document.getElementById('totalCost');
+            
+            if (Object.keys(userOrders).length === 0) {
+                ordersList.innerHTML = '<p style="text-align: center; color: #999; font-size: 1.2em;">No hay pedidos aún</p>';
+                totalCost.innerHTML = '';
+                return;
+            }
+            
+            // Agrupar por plato
+            const dishCount = {};
+            let grandTotal = 0;
+            
+            Object.keys(userOrders).forEach(userId => {
+                const userData = userOrders[userId];
+                const orders = userData.orders || [];
+                const weekOrders = orders.filter(order => order.week === currentWeek);
+                
+                weekOrders.forEach(order => {
+                    const key = order.dishName;
+                    if (!dishCount[key]) {
+                        dishCount[key] = {
+                            name: order.dishName,
+                            price: order.price,
+                            count: 0,
+                            users: [],
+                            total: 0
+                        };
+                    }
+                    dishCount[key].count++;
+                    dishCount[key].total += order.price;
+                    dishCount[key].users.push({
+                        user: userData.fullName || userId,
+                        comment: order.comment
+                    });
+                    grandTotal += order.price;
+                });
+            });
+            
+            let html = '';
+            
+            // Resumen por usuario
+            Object.keys(userOrders).forEach(userId => {
+                const userData = userOrders[userId];
+                const orders = userData.orders || [];
+                const weekOrders = orders.filter(order => order.week === currentWeek);
+                if (weekOrders.length === 0) return;
+                
+                const userTotal = weekOrders.reduce((sum, order) => sum + order.price, 0);
+                
+                html += `
+                    <div class="order-card">
+                        <h3>👤 ${userData.fullName || userId}</h3>
+                        ${weekOrders.map(order => `
+                            <div class="order-item">
+                                <strong>${order.dishName}</strong> - Bs. ${order.price.toFixed(2)}
+                                ${order.comment ? `<br><small style="color: #666;">💬 ${order.comment}</small>` : ''}
+                            </div>
+                        `).join('')}
+                        <div style="text-align: right; margin-top: 10px; font-size: 1.2em;">
+                            <strong>Subtotal: Bs. ${userTotal.toFixed(2)}</strong>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            // Resumen consolidado para cocina
+            html += `
+                <div style="background: #fff3cd; padding: 20px; border-radius: 10px; margin-top: 30px; border: 3px solid #ffc107;">
+                    <h3 style="color: #856404; margin-bottom: 20px; font-size: 1.5em;">
+                        👨‍🍳 RESUMEN PARA COCINA
+                    </h3>
+            `;
+            
+            Object.keys(dishCount).forEach(dishName => {
+                const dish = dishCount[dishName];
+                html += `
+                    <div style="background: white; padding: 15px; margin: 10px 0; border-radius: 8px; border-left: 5px solid #ffc107;">
+                        <strong style="font-size: 1.2em;">${dish.name}</strong>
+                        <div style="margin-top: 10px;">
+                            <span style="background: #28a745; color: white; padding: 5px 15px; border-radius: 5px; font-size: 1.1em;">
+                                Cantidad: ${dish.count}
+                            </span>
+                        </div>
+                        ${dish.users.some(u => u.comment) ? `
+                            <div style="margin-top: 10px;">
+                                <strong>Comentarios especiales:</strong>
+                                ${dish.users.filter(u => u.comment).map(u => `
+                                    <div style="margin: 5px 0; padding: 8px; background: #f8f9fa; border-radius: 5px;">
+                                        • ${u.user}: ${u.comment}
+                                    </div>
+                                `).join('')}
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            });
+            
+            html += '</div>';
+            
+            ordersList.innerHTML = html;
+            
+            // Contar total de pedidos
+            let totalOrderCount = 0;
+            Object.keys(userOrders).forEach(userId => {
+                const userData = userOrders[userId];
+                const orders = userData.orders || [];
+                totalOrderCount += orders.filter(o => o.week === currentWeek).length;
+            });
+            
+            totalCost.innerHTML = `
+                <div class="total-section">
+                    <h2>💰 TOTAL GENERAL</h2>
+                    <h2 style="font-size: 2.5em; margin-top: 15px;">Bs. ${grandTotal.toFixed(2)}</h2>
+                    <p style="font-size: 1.2em; margin-top: 10px;">
+                        Total de pedidos: ${totalOrderCount}
+                    </p>
+                </div>
+            `;
+        }
+
+        function exportOrders() {
+            const dishCount = {};
+            let grandTotal = 0;
+            
+            Object.keys(userOrders).forEach(userId => {
+                const userData = userOrders[userId];
+                const orders = userData.orders || [];
+                const weekOrders = orders.filter(order => order.week === currentWeek);
+                weekOrders.forEach(order => {
+                    const key = order.dishName;
+                    if (!dishCount[key]) {
+                        dishCount[key] = {
+                            name: order.dishName,
+                            price: order.price,
+                            count: 0,
+                            users: [],
+                            total: 0
+                        };
+                    }
+                    dishCount[key].count++;
+                    dishCount[key].total += order.price;
+                    dishCount[key].users.push({
+                        user: userData.fullName || userId,
+                        comment: order.comment
+                    });
+                    grandTotal += order.price;
+                });
+            });
+            
+            let text = `LISTA DE PEDIDOS - ZEPITA BOT\n`;
+            text += `Semana: ${currentWeek}\n`;
+            text += `Fecha de exportación: ${new Date().toLocaleString('es-BO')}\n`;
+            text += `\n${'='.repeat(50)}\n`;
+            text += `RESUMEN POR USUARIO\n`;
+            text += `${'='.repeat(50)}\n\n`;
+            
+            // Listado por usuario
+            Object.keys(userOrders).forEach(userId => {
+                const userData = userOrders[userId];
+                const orders = userData.orders || [];
+                const weekOrders = orders.filter(order => order.week === currentWeek);
+                if (weekOrders.length === 0) return;
+                
+                const userTotal = weekOrders.reduce((sum, order) => sum + order.price, 0);
+                
+                text += `USUARIO: ${userData.fullName || userId}\n`;
+                weekOrders.forEach((order, index) => {
+                    text += `  ${index + 1}. ${order.dishName} - Bs. ${order.price.toFixed(2)}\n`;
+                    if (order.comment) {
+                        text += `     Comentario: ${order.comment}\n`;
+                    }
+                });
+                text += `  Subtotal: Bs. ${userTotal.toFixed(2)}\n\n`;
+            });
+            
+            text += `${'='.repeat(50)}\n`;
+            text += `RESUMEN PARA COCINA\n`;
+            text += `${'='.repeat(50)}\n\n`;
+            
+            Object.keys(dishCount).forEach(dishName => {
+                const dish = dishCount[dishName];
+                text += `${dish.name}\n`;
+                text += `Cantidad a preparar: ${dish.count}\n`;
+                text += `Precio unitario: Bs. ${dish.price.toFixed(2)}\n`;
+                text += `Subtotal: Bs. ${dish.total.toFixed(2)}\n`;
+                
+                if (dish.users.some(u => u.comment)) {
+                    text += `\nComentarios especiales:\n`;
+                    dish.users.filter(u => u.comment).forEach(u => {
+                        text += `  - ${u.user}: ${u.comment}\n`;
+                    });
+                }
+                text += `\n${'-'.repeat(50)}\n\n`;
+            });
+            
+            // Contar total de pedidos
+            let totalOrderCount = 0;
+            Object.keys(userOrders).forEach(userId => {
+                const userData = userOrders[userId];
+                const orders = userData.orders || [];
+                totalOrderCount += orders.filter(o => o.week === currentWeek).length;
+            });
+            
+            text += `\n${'='.repeat(50)}\n`;
+            text += `TOTAL GENERAL: Bs. ${grandTotal.toFixed(2)}\n`;
+            text += `Total de pedidos: ${totalOrderCount}\n`;
+            text += `${'='.repeat(50)}\n`;
+            
+            const blob = new Blob([text], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `pedidos_zepita_bot_${currentWeek}.txt`;
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            alert('✅ Lista exportada correctamente!');
+        }
+
+        function generatePDF() {
+            const { jsPDF } = window.jspdf;
+            
+            if (!jsPDF) {
+                alert('Error al cargar la librería PDF. Por favor recarga la página.');
+                return;
+            }
+            
+            const dishCount = {};
+            let grandTotal = 0;
+            
+            Object.keys(userOrders).forEach(userId => {
+                const userData = userOrders[userId];
+                const orders = userData.orders || [];
+                const weekOrders = orders.filter(order => order.week === currentWeek);
+                weekOrders.forEach(order => {
+                    const key = order.dishName;
+                    if (!dishCount[key]) {
+                        dishCount[key] = {
+                            name: order.dishName,
+                            price: order.price,
+                            count: 0,
+                            users: [],
+                            total: 0
+                        };
+                    }
+                    dishCount[key].count++;
+                    dishCount[key].total += order.price;
+                    dishCount[key].users.push({
+                        user: userData.fullName || userId,
+                        comment: order.comment
+                    });
+                    grandTotal += order.price;
+                });
+            });
+            
+            if (Object.keys(userOrders).length === 0) {
+                alert('No hay pedidos para generar el PDF');
+                return;
+            }
+            
+            const doc = new jsPDF();
+            let yPosition = 20;
+            const pageWidth = doc.internal.pageSize.getWidth();
+            const pageHeight = doc.internal.pageSize.getHeight();
+            const margin = 15;
+            const maxWidth = pageWidth - (margin * 2);
+            
+            // Función para agregar nueva página si es necesario
+            function checkPageBreak(requiredSpace) {
+                if (yPosition + requiredSpace > pageHeight - 20) {
+                    doc.addPage();
+                    yPosition = 20;
+                    return true;
+                }
+                return false;
+            }
+            
+            // Título
+            doc.setFontSize(20);
+            doc.setFont(undefined, 'bold');
+            doc.text('LISTA DE PEDIDOS - ZEPITA BOT', pageWidth / 2, yPosition, { align: 'center' });
+            yPosition += 10;
+            
+            // Fecha del menú
+            const thursdayDate = new Date(currentWeek + 'T00:00:00');
+            const displayDate = thursdayDate.toLocaleDateString('es-BO', { 
+                weekday: 'long', 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+            });
+            
+            doc.setFontSize(12);
+            doc.setFont(undefined, 'normal');
+            doc.text(`Menu: ${displayDate}`, pageWidth / 2, yPosition, { align: 'center' });
+            yPosition += 6;
+            
+            const exportDate = new Date().toLocaleString('es-BO');
+            doc.setFontSize(10);
+            doc.text(`Generado: ${exportDate}`, pageWidth / 2, yPosition, { align: 'center' });
+            yPosition += 15;
+            
+            // Línea separadora
+            doc.setLineWidth(0.5);
+            doc.line(margin, yPosition, pageWidth - margin, yPosition);
+            yPosition += 10;
+            
+            // SECCIÓN: Resumen por Usuario
+            doc.setFontSize(14);
+            doc.setFont(undefined, 'bold');
+            doc.text('RESUMEN POR USUARIO', margin, yPosition);
+            yPosition += 8;
+            
+            doc.setFontSize(10);
+            doc.setFont(undefined, 'normal');
+            
+            Object.keys(userOrders).forEach(userId => {
+                const userData = userOrders[userId];
+                const orders = userData.orders || [];
+                const weekOrders = orders.filter(order => order.week === currentWeek);
+                if (weekOrders.length === 0) return;
+                
+                const userTotal = weekOrders.reduce((sum, order) => sum + order.price, 0);
+                
+                checkPageBreak(40);
+                
+                // Nombre de usuario
+                doc.setFont(undefined, 'bold');
+                doc.text(`Usuario: ${userData.fullName || userId}`, margin, yPosition);
+                yPosition += 6;
+                
+                doc.setFont(undefined, 'normal');
+                
+                // Pedidos del usuario
+                weekOrders.forEach((order, index) => {
+                    checkPageBreak(15);
+                    
+                    const orderText = `  ${index + 1}. ${order.dishName} - Bs. ${order.price.toFixed(2)}`;
+                    doc.text(orderText, margin + 5, yPosition);
+                    yPosition += 5;
+                    
+                    if (order.comment) {
+                        checkPageBreak(10);
+                        doc.setFontSize(9);
+                        doc.setTextColor(100);
+                        const commentLines = doc.splitTextToSize(`     Comentario: ${order.comment}`, maxWidth - 10);
+                        commentLines.forEach(line => {
+                            checkPageBreak(5);
+                            doc.text(line, margin + 5, yPosition);
+                            yPosition += 4;
+                        });
+                        doc.setFontSize(10);
+                        doc.setTextColor(0);
+                    }
+                });
+                
+                // Subtotal del usuario
+                doc.setFont(undefined, 'bold');
+                doc.text(`  Subtotal: Bs. ${userTotal.toFixed(2)}`, margin + 5, yPosition);
+                yPosition += 10;
+                doc.setFont(undefined, 'normal');
+            });
+            
+            // Línea separadora
+            checkPageBreak(20);
+            doc.setLineWidth(0.5);
+            doc.line(margin, yPosition, pageWidth - margin, yPosition);
+            yPosition += 10;
+            
+            // SECCIÓN: Resumen para Cocina
+            checkPageBreak(30);
+            doc.setFontSize(14);
+            doc.setFont(undefined, 'bold');
+            doc.setFillColor(255, 243, 205);
+            doc.rect(margin, yPosition - 5, maxWidth, 10, 'F');
+            doc.text('RESUMEN PARA COCINA', margin + 5, yPosition);
+            yPosition += 12;
+            
+            doc.setFontSize(10);
+            doc.setFont(undefined, 'normal');
+            
+            Object.keys(dishCount).forEach(dishName => {
+                const dish = dishCount[dishName];
+                
+                checkPageBreak(30);
+                
+                // Nombre del plato
+                doc.setFont(undefined, 'bold');
+                doc.text(dish.name, margin, yPosition);
+                yPosition += 6;
+                
+                doc.setFont(undefined, 'normal');
+                doc.text(`Cantidad a preparar: ${dish.count}`, margin + 5, yPosition);
+                yPosition += 5;
+                doc.text(`Precio unitario: Bs. ${dish.price.toFixed(2)}`, margin + 5, yPosition);
+                yPosition += 5;
+                doc.text(`Subtotal: Bs. ${dish.total.toFixed(2)}`, margin + 5, yPosition);
+                yPosition += 7;
+                
+                // Comentarios especiales
+                if (dish.users.some(u => u.comment)) {
+                    checkPageBreak(20);
+                    doc.setFont(undefined, 'bold');
+                    doc.text('Comentarios especiales:', margin + 5, yPosition);
+                    yPosition += 5;
+                    doc.setFont(undefined, 'normal');
+                    
+                    dish.users.filter(u => u.comment).forEach(u => {
+                        checkPageBreak(10);
+                        doc.setFontSize(9);
+                        const commentText = `  - ${u.user}: ${u.comment}`;
+                        const lines = doc.splitTextToSize(commentText, maxWidth - 10);
+                        lines.forEach(line => {
+                            checkPageBreak(5);
+                            doc.text(line, margin + 7, yPosition);
+                            yPosition += 4;
+                        });
+                        doc.setFontSize(10);
+                    });
+                }
+                
+                yPosition += 8;
+                doc.setDrawColor(200);
+                doc.line(margin, yPosition, pageWidth - margin, yPosition);
+                yPosition += 8;
+            });
+            
+            // Contar total de pedidos
+            let totalOrderCount = 0;
+            Object.keys(userOrders).forEach(userId => {
+                const userData = userOrders[userId];
+                const orders = userData.orders || [];
+                totalOrderCount += orders.filter(o => o.week === currentWeek).length;
+            });
+            
+            // TOTAL GENERAL
+            checkPageBreak(35);
+            yPosition += 5;
+            doc.setLineWidth(1);
+            doc.line(margin, yPosition, pageWidth - margin, yPosition);
+            yPosition += 10;
+            
+            doc.setFontSize(16);
+            doc.setFont(undefined, 'bold');
+            doc.text('TOTAL GENERAL', margin, yPosition);
+            yPosition += 8;
+            
+            doc.setFontSize(20);
+            doc.text(`Bs. ${grandTotal.toFixed(2)}`, margin, yPosition);
+            yPosition += 8;
+            
+            doc.setFontSize(12);
+            doc.setFont(undefined, 'normal');
+            doc.text(`Total de pedidos: ${totalOrderCount}`, margin, yPosition);
+            
+            // Guardar PDF
+            const fileName = `pedidos_zepita_bot_${currentWeek}.pdf`;
+            doc.save(fileName);
+            
+            alert('✅ PDF generado correctamente!');
+        }
+
+        function printOrders() {
+            window.print();
+        }
+
+        function saveToStorage() {
+            localStorage.setItem('zepitaBotMenu', JSON.stringify(currentMenu));
+            localStorage.setItem('zepitaBotOrders', JSON.stringify(userOrders));
+            localStorage.setItem('zepitaBotWeek', currentWeek);
+        }
+
+        function loadFromStorage() {
+            const savedMenu = localStorage.getItem('zepitaBotMenu');
+            const savedOrders = localStorage.getItem('zepitaBotOrders');
+            const savedWeek = localStorage.getItem('zepitaBotWeek');
+            
+            if (savedMenu) currentMenu = JSON.parse(savedMenu);
+            if (savedOrders) userOrders = JSON.parse(savedOrders);
+            if (savedWeek) currentWeek = savedWeek;
+            
+            displayMenu();
+        }
+    </script>
+</body>
+</html>
