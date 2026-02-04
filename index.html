@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Zepita Bot - Asistente de Menús</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    
     <style>
         * {
             margin: 0;
@@ -570,6 +575,30 @@
     </div>
 
     <script>
+        // Configuración de Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyAcC3TaZvh2_HdXW-OGOdDdDCsTLjH69L4",
+            authDomain: "zepita-bot.firebaseapp.com",
+            databaseURL: "https://zepita-bot-default-rtdb.firebaseio.com",
+            projectId: "zepita-bot",
+            storageBucket: "zepita-bot.firebasestorage.app",
+            messagingSenderId: "198014175856",
+            appId: "1:198014175856:web:3f22f2b5a06a0f0df102b5",
+            measurementId: "G-QX6XTEW1L2"
+        };
+
+        // Inicializar Firebase
+        let database;
+        try {
+            if (!firebase.apps.length) {
+                firebase.initializeApp(firebaseConfig);
+            }
+            database = firebase.database();
+            console.log('✅ Firebase inicializado correctamente');
+        } catch (error) {
+            console.error('❌ Error al inicializar Firebase:', error);
+        }
+
         // Base de datos local
         let currentMenu = [];
         let userOrders = {};
@@ -588,12 +617,36 @@
 
         // Inicializar
         window.onload = function() {
-            loadFromStorage();
+            initializeApp();
+        };
+
+        async function initializeApp() {
+            await loadFromCloud();
             populateThursdays();
             initVoiceRecognition();
             checkAdminAuth();
-            cleanExpiredMenus(); // Limpiar menús expirados al iniciar
-        };
+            cleanExpiredMenus();
+            
+            // Escuchar cambios en tiempo real
+            if (database) {
+                database.ref('menu').on('value', (snapshot) => {
+                    const data = snapshot.val();
+                    if (data) {
+                        currentMenu = data;
+                        displayMenu();
+                    }
+                });
+                
+                database.ref('orders').on('value', (snapshot) => {
+                    const data = snapshot.val();
+                    if (data) {
+                        userOrders = data;
+                        updateUserOrderSummary();
+                        displayOrders();
+                    }
+                });
+            }
+        }
 
         function verifyAdminCode() {
             const code = document.getElementById('adminCode').value;
@@ -647,16 +700,38 @@
                 recognition = new webkitSpeechRecognition();
                 recognition.continuous = false;
                 recognition.lang = 'es-ES';
+                recognition.interimResults = false;
+                
+                recognition.onstart = function() {
+                    console.log('Reconocimiento de voz iniciado');
+                };
                 
                 recognition.onresult = function(event) {
                     const transcript = event.results[0][0].transcript;
+                    const confidence = event.results[0][0].confidence;
+                    
+                    console.log('Reconocido:', transcript, 'Confianza:', confidence);
+                    
                     document.getElementById('userMessage').value = transcript;
                     sendMessage();
+                };
+                
+                recognition.onerror = function(event) {
+                    console.error('Error en reconocimiento de voz:', event.error);
+                    isVoiceActive = false;
+                    document.getElementById('voiceBtn').classList.remove('active');
+                    
+                    if (event.error === 'no-speech') {
+                        const response = 'No escuché nada. Por favor, presiona el micrófono e intenta de nuevo.';
+                        addBotMessage(response);
+                        speak(response);
+                    }
                 };
                 
                 recognition.onend = function() {
                     isVoiceActive = false;
                     document.getElementById('voiceBtn').classList.remove('active');
+                    console.log('Reconocimiento de voz finalizado');
                 };
             }
         }
@@ -683,8 +758,51 @@
                 const utterance = new SpeechSynthesisUtterance(text);
                 utterance.lang = 'es-ES';
                 utterance.rate = 0.9;
+                
+                // Obtener voces disponibles
+                const voices = window.speechSynthesis.getVoices();
+                
+                // Buscar una voz masculina en español
+                let selectedVoice = null;
+                
+                // Prioridad 1: Voz masculina española
+                selectedVoice = voices.find(voice => 
+                    voice.lang.startsWith('es') && 
+                    (voice.name.toLowerCase().includes('male') || 
+                     voice.name.toLowerCase().includes('man') ||
+                     voice.name.toLowerCase().includes('diego') ||
+                     voice.name.toLowerCase().includes('jorge') ||
+                     voice.name.toLowerCase().includes('carlos'))
+                );
+                
+                // Prioridad 2: Cualquier voz española (si no hay masculina específica)
+                if (!selectedVoice) {
+                    selectedVoice = voices.find(voice => 
+                        voice.lang.startsWith('es-ES') || 
+                        voice.lang.startsWith('es-MX') ||
+                        voice.lang.startsWith('es')
+                    );
+                }
+                
+                // Asignar la voz seleccionada
+                if (selectedVoice) {
+                    utterance.voice = selectedVoice;
+                }
+                
+                // Configuración para sonido más masculino
+                utterance.pitch = 0.8; // Tono más grave (0-2, default 1)
+                
                 window.speechSynthesis.speak(utterance);
             }
+        }
+        
+        // Cargar voces cuando estén disponibles
+        if ('speechSynthesis' in window) {
+            // Las voces se cargan de forma asíncrona
+            window.speechSynthesis.onvoiceschanged = function() {
+                const voices = window.speechSynthesis.getVoices();
+                console.log('Voces disponibles:', voices.map(v => v.name + ' (' + v.lang + ')'));
+            };
         }
 
         function getAllThursdays(year) {
@@ -836,7 +954,7 @@
                 }
             });
             
-            saveToStorage();
+            saveToCloud();
         }
 
         function getWeekNumber(date) {
@@ -889,7 +1007,7 @@
             };
 
             currentMenu.push(dish);
-            saveToStorage();
+            saveToCloud();
             displayMenu();
 
             // Limpiar formulario
@@ -926,7 +1044,7 @@
         function removeDish(dishId) {
             if (confirm('¿Estás seguro de eliminar este plato?')) {
                 currentMenu = currentMenu.filter(dish => dish.id !== dishId);
-                saveToStorage();
+                saveToCloud();
                 displayMenu();
             }
         }
@@ -1081,15 +1199,67 @@
                 return;
             }
             
-            if (lowerMsg.includes('menu') || lowerMsg.includes('menú') || lowerMsg.includes('ver') || lowerMsg.includes('mostrar') || lowerMsg.includes('si') || lowerMsg.includes('sí')) {
-                showMenuToUser();
-            } else if (lowerMsg.includes('pedir') || lowerMsg.includes('ordenar') || lowerMsg.includes('quiero')) {
-                const response = 'Por favor indica el número del plato que deseas ordenar. Por ejemplo: "Quiero el plato 1"';
+            // Convertir números en palabras a dígitos
+            const numberInWords = {
+                'uno': 1, 'una': 1,
+                'dos': 2,
+                'tres': 3,
+                'cuatro': 4,
+                'cinco': 5,
+                'seis': 6,
+                'siete': 7,
+                'ocho': 8,
+                'nueve': 9,
+                'diez': 10,
+                'once': 11,
+                'doce': 12,
+                'trece': 13,
+                'catorce': 14,
+                'quince': 15,
+                'dieciséis': 16, 'dieciseis': 16,
+                'diecisiete': 17,
+                'dieciocho': 18,
+                'diecinueve': 19,
+                'veinte': 20
+            };
+            
+            // Buscar si dice un número en palabras
+            let foundNumber = null;
+            for (let word in numberInWords) {
+                if (lowerMsg.includes(word)) {
+                    foundNumber = numberInWords[word];
+                    break;
+                }
+            }
+            
+            // También buscar números en dígitos
+            if (!foundNumber && lowerMsg.match(/\d+/)) {
+                foundNumber = parseInt(lowerMsg.match(/\d+/)[0]);
+            }
+            
+            // Patrones para ordenar
+            const orderPatterns = [
+                'quiero', 'pedir', 'ordenar', 'dame', 'el plato',
+                'número', 'numero', 'opción', 'opcion'
+            ];
+            
+            // Si encontró un número, procesarlo como pedido
+            if (foundNumber) {
+                orderDish(foundNumber, message);
+                return;
+            }
+            
+            // Si menciona palabras de pedido
+            if (orderPatterns.some(pattern => lowerMsg.includes(pattern))) {
+                const response = 'Por favor dime el número del plato que deseas. Por ejemplo: "el uno" o "quiero el plato dos"';
                 addBotMessage(response);
                 speak(response);
-            } else if (lowerMsg.match(/\d+/)) {
-                const number = parseInt(lowerMsg.match(/\d+/)[0]);
-                orderDish(number, message);
+                return;
+            }
+            
+            // Mostrar menú
+            if (lowerMsg.includes('menu') || lowerMsg.includes('menú') || lowerMsg.includes('ver') || lowerMsg.includes('mostrar') || lowerMsg.includes('si') || lowerMsg.includes('sí')) {
+                showMenuToUser();
             } else {
                 const response = 'Puedo ayudarte a ver el menú o hacer tu pedido. ¿Qué te gustaría hacer?';
                 addBotMessage(response);
@@ -1183,7 +1353,7 @@
                 week: currentWeek
             });
             
-            saveToStorage();
+            saveToCloud();
             updateUserOrderSummary();
             
             // Activar el estado de "acaba de ordenar"
@@ -1237,7 +1407,7 @@
                 week: currentWeek
             });
             
-            saveToStorage();
+            saveToCloud();
             updateUserOrderSummary();
             
             // Activar el estado de "acaba de ordenar"
@@ -1753,13 +1923,58 @@
             window.print();
         }
 
-        function saveToStorage() {
+        async function saveToCloud() {
+            if (!database) {
+                console.error('Firebase no está inicializado');
+                // Fallback a localStorage
+                saveToLocalStorage();
+                return;
+            }
+            
+            try {
+                await database.ref('menu').set(currentMenu);
+                await database.ref('orders').set(userOrders);
+                console.log('Datos guardados en la nube');
+            } catch (error) {
+                console.error('Error al guardar en Firebase:', error);
+                saveToLocalStorage();
+            }
+        }
+
+        async function loadFromCloud() {
+            if (!database) {
+                console.error('Firebase no está inicializado');
+                loadFromLocalStorage();
+                return;
+            }
+            
+            try {
+                const menuSnapshot = await database.ref('menu').once('value');
+                const ordersSnapshot = await database.ref('orders').once('value');
+                
+                if (menuSnapshot.exists()) {
+                    currentMenu = menuSnapshot.val();
+                }
+                
+                if (ordersSnapshot.exists()) {
+                    userOrders = ordersSnapshot.val();
+                }
+                
+                console.log('Datos cargados desde la nube');
+                displayMenu();
+            } catch (error) {
+                console.error('Error al cargar desde Firebase:', error);
+                loadFromLocalStorage();
+            }
+        }
+
+        function saveToLocalStorage() {
             localStorage.setItem('zepitaBotMenu', JSON.stringify(currentMenu));
             localStorage.setItem('zepitaBotOrders', JSON.stringify(userOrders));
             localStorage.setItem('zepitaBotWeek', currentWeek);
         }
 
-        function loadFromStorage() {
+        function loadFromLocalStorage() {
             const savedMenu = localStorage.getItem('zepitaBotMenu');
             const savedOrders = localStorage.getItem('zepitaBotOrders');
             const savedWeek = localStorage.getItem('zepitaBotWeek');
