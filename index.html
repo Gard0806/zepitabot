@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zepita Bot - Asistente de Menús</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .tabs {
+            display: flex;
+            background: #f8f9fa;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .tab {
+            flex: 1;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            font-size: 1.1em;
+            font-weight: 600;
+            transition: all 0.3s;
+            border: none;
+            background: transparent;
+        }
+
+        .tab:hover {
+            background: #e9ecef;
+        }
+
+        .tab.active {
+            background: white;
+            border-bottom: 4px solid #667eea;
+            color: #667eea;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .section {
+            display: none;
+        }
+
+        .section.active {
+            display: block;
+        }
+
+        /* Estilos para Admin */
+        .admin-section {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 8px;
+            font-size: 1.1em;
+            color: #333;
+        }
+
+        input, textarea, select {
+            width: 100%;
+            padding: 15px;
+            font-size: 1.1em;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            transition: border-color 0.3s;
+        }
+
+        input:focus, textarea:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn {
+            padding: 15px 30px;
+            font-size: 1.2em;
+            font-weight: 600;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin: 5px;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102,126,234,0.3);
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+            transform: translateY(-2px);
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-large {
+            padding: 25px 50px;
+            font-size: 1.5em;
+            margin: 10px;
+            min-width: 250px;
+        }
+
+        .menu-item {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            border: 2px solid #e0e0e0;
+        }
+
+        .menu-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .menu-item h3 {
+            color: #667eea;
+            font-size: 1.3em;
+        }
+
+        .price {
+            color: #28a745;
+            font-weight: bold;
+            font-size: 1.2em;
+        }
+
+        /* Chat Interface */
+        .chat-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: #fff;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .chat-header {
+            background: #667eea;
+            color: white;
+            padding: 20px;
+            border-radius: 15px 15px 0 0;
+            text-align: center;
+        }
+
+        .chat-messages {
+            height: 400px;
+            overflow-y: auto;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            padding: 15px;
+            border-radius: 10px;
+            max-width: 80%;
+            line-height: 1.6;
+            font-size: 1.1em;
+        }
+
+        .message.bot {
+            background: #e3f2fd;
+            margin-right: auto;
+        }
+
+        .message.user {
+            background: #667eea;
+            color: white;
+            margin-left: auto;
+        }
+
+        .chat-input {
+            display: flex;
+            padding: 20px;
+            gap: 10px;
+            border-top: 2px solid #e0e0e0;
+        }
+
+        .chat-input input {
+            flex: 1;
+        }
+
+        .voice-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 15px 25px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 1.1em;
+        }
+
+        .voice-btn.active {
+            background: #c82333;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        /* Lista de Pedidos */
+        .orders-summary {
+            background: #fff;
+            border-radius: 15px;
+            padding: 20px;
+        }
+
+        .order-card {
+            background: #f8f9fa;
+            border-left: 5px solid #667eea;
+            padding: 20px;
+            margin-bottom: 15px;
+            border-radius: 10px;
+        }
+
+        .order-card h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 1.3em;
+        }
+
+        .order-item {
+            padding: 10px;
+            background: white;
+            margin: 10px 0;
+            border-radius: 5px;
+            border: 1px solid #e0e0e0;
+        }
+
+        .total-section {
+            background: #28a745;
+            color: white;
+            padding: 25px;
+            border-radius: 10px;
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        .total-section h2 {
+            font-size: 2em;
+        }
+
+        .week-selector {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+
+        .week-selector h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+
+        .communication-choice {
+            text-align: center;
+            padding: 40px;
+        }
+
+        .communication-choice h2 {
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 2em;
+        }
+
+        .whatsapp-section {
+            background: #25D366;
+            color: white;
+            padding: 30px;
+            border-radius: 15px;
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        .whatsapp-section h3 {
+            margin-bottom: 15px;
+            font-size: 1.5em;
+        }
+
+        .whatsapp-link {
+            background: white;
+            color: #25D366;
+            padding: 15px 30px;
+            border-radius: 10px;
+            text-decoration: none;
+            display: inline-block;
+            font-weight: bold;
+            font-size: 1.2em;
+            margin-top: 10px;
+        }
+
+        .alert {
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-size: 1.1em;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            border: 2px solid #28a745;
+            color: #155724;
+        }
+
+        .alert-info {
+            background: #d1ecf1;
+            border: 2px solid #17a2b8;
+            color: #0c5460;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 1.8em;
+            }
+            
+            .btn-large {
+                min-width: 100%;
+                margin: 10px 0;
+            }
+            
+            .tab {
+                font-size: 0.9em;
+                padding: 15px 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🍽️ Zepita Bot</h1>
+            <p>Tu Asistente Inteligente de Menús</p>
+        </div>
+
+        <div class="tabs">
+            <button class="tab active" onclick="showSection('admin')">👨‍🍳 Maestro de Banquetes</button>
+            <button class="tab" onclick="showSection('user')">👤 Usuario</button>
+            <button class="tab" onclick="showSection('orders')">📋 Lista de Pedidos</button>
+        </div>
+
+        <div class="content">
+            <!-- SECCIÓN ADMINISTRADOR -->
+            <div id="admin" class="section active">
+                <!-- Pantalla de Login -->
+                <div id="adminLogin" class="admin-section">
+                    <div style="max-width: 500px; margin: 50px auto; text-align: center;">
+                        <div style="background: #f8f9fa; padding: 40px; border-radius: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.1);">
+                            <h2 style="color: #667eea; margin-bottom: 20px; font-size: 2em;">
+                                🔐 Acceso Maestro de Banquetes
+                            </h2>
+                            <p style="color: #666; margin-bottom: 30px; font-size: 1.1em;">
+                                Ingresa el código de acceso para continuar
+                            </p>
+                            <div class="form-group">
+                                <input type="password" 
+                                       id="adminCode" 
+                                       placeholder="Código de acceso" 
+                                       style="text-align: center; font-size: 1.3em; letter-spacing: 3px;"
+                                       onkeypress="if(event.key === 'Enter') verifyAdminCode()">
+                            </div>
+                            <button class="btn btn-primary btn-large" onclick="verifyAdminCode()">
+                                🔓 Ingresar
+                            </button>
+                            <div id="loginError" style="display: none; margin-top: 20px;">
+                                <div class="alert" style="background: #f8d7da; border: 2px solid #dc3545; color: #721c24;">
+                                    ❌ Código incorrecto. Intenta nuevamente.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Panel de Administración -->
+                <div id="adminPanel" class="admin-section" style="display: none;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 10px;">
+                        <div>
+                            <strong style="color: #667eea; font-size: 1.1em;">👨‍🍳 Sesión Activa</strong>
+                        </div>
+                        <button class="btn btn-danger" onclick="logoutAdmin()" style="font-size: 1em;">
+                            🚪 Cerrar Sesión
+                        </button>
+                    </div>
+
+                    <h2 style="text-align: center; color: #667eea; margin-bottom: 30px; font-size: 2em;">
+                        Panel del Maestro de Banquetes
+                    </h2>
+
+                    <div class="week-selector">
+                        <h2>Selecciona el Jueves para el Menú</h2>
+                        <select id="thursdaySelector" class="form-control" onchange="updateThursdayDisplay()" style="font-size: 1.2em; padding: 15px;">
+                            <option value="">-- Selecciona un jueves --</option>
+                        </select>
+                        <p id="thursdayDisplay" style="margin-top: 15px; font-size: 1.2em; color: #666;"></p>
+                        <div id="deadlineWarning" style="margin-top: 15px; display: none;">
+                            <div class="alert" style="background: #fff3cd; border: 2px solid #ffc107; color: #856404;">
+                                ⏰ <strong>Importante:</strong> Los usuarios podrán hacer pedidos hasta las <strong>18:00 hrs del jueves</strong>. Después de esa hora, el menú se bloqueará automáticamente.
+                            </div>
+                        </div>
+                        <div id="menuExpired" style="margin-top: 15px; display: none;">
+                            <div class="alert" style="background: #f8d7da; border: 2px solid #dc3545; color: #721c24;">
+                                ❌ <strong>Menú Expirado:</strong> Este menú ya no acepta pedidos. El plazo venció el jueves a las 18:00 hrs.
+                            </div>
+                        </div>
+                        <div id="menuDeleteWarning" style="margin-top: 15px; display: none;">
+                            <div class="alert" style="background: #f8d7da; border: 2px solid #dc3545; color: #721c24;">
+                                🗑️ <strong>Eliminación Automática:</strong> Este menú será eliminado automáticamente 3 días después del jueves (el domingo a las 23:59 hrs).
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>📝 Nombre del Plato</label>
+                        <input type="text" id="dishName" placeholder="Ej: Pollo al horno con papas">
+                    </div>
+
+                    <div class="form-group">
+                        <label>💰 Precio (Bs.)</label>
+                        <input type="number" id="dishPrice" placeholder="Ej: 25" step="0.5">
+                    </div>
+
+                    <div class="form-group">
+                        <label>📄 Descripción (opcional)</label>
+                        <textarea id="dishDescription" rows="3" placeholder="Descripción del plato..."></textarea>
+                    </div>
+
+                    <div style="text-align: center; margin-top: 30px;">
+                        <button class="btn btn-primary btn-large" onclick="addDishToMenu()">
+                            ➕ Agregar Plato al Menú
+                        </button>
+                    </div>
+
+                    <div id="currentMenu" style="margin-top: 40px;">
+                        <h3 style="color: #667eea; font-size: 1.8em; margin-bottom: 20px;">Menú Actual</h3>
+                        <div id="menuList"></div>
+                    </div>
+
+                    <div style="text-align: center; margin-top: 30px;">
+                        <button class="btn btn-success btn-large" onclick="publishMenu()">
+                            🚀 Publicar Menú
+                        </button>
+                    </div>
+
+                    <div id="whatsappShare" style="display: none;"></div>
+                </div>
+            </div>
+
+            <!-- SECCIÓN USUARIO -->
+            <div id="user" class="section">
+                <div id="communicationChoice" class="communication-choice">
+                    <h2>¿Cómo prefieres comunicarte?</h2>
+                    <div>
+                        <button class="btn btn-primary btn-large" onclick="startChat()">
+                            💬 Por Chat
+                        </button>
+                        <button class="btn btn-primary btn-large" onclick="startVoice()">
+                            🎤 Por Voz
+                        </button>
+                    </div>
+                </div>
+
+                <div id="userInterface" style="display: none;">
+                    <div class="chat-container">
+                        <div class="chat-header">
+                            <h2>Zepita Bot - Asistente Virtual</h2>
+                            <p id="communicationMode"></p>
+                        </div>
+
+                        <div class="chat-messages" id="chatMessages"></div>
+
+                        <div class="chat-input">
+                            <input type="text" id="userMessage" placeholder="Escribe tu mensaje..." 
+                                   onkeypress="if(event.key === 'Enter') sendMessage()">
+                            <button class="btn btn-primary" onclick="sendMessage()">Enviar</button>
+                            <button class="voice-btn" id="voiceBtn" onclick="toggleVoice()">🎤</button>
+                        </div>
+                    </div>
+
+                    <div id="menuDisplay" style="margin-top: 30px;"></div>
+                    <div id="orderSummary" style="margin-top: 30px;"></div>
+                </div>
+            </div>
+
+            <!-- SECCIÓN PEDIDOS -->
+            <div id="orders" class="section">
+                <div class="orders-summary">
+                    <h2 style="text-align: center; color: #667eea; margin-bottom: 30px; font-size: 2em;">
+                        📋 Resumen de Pedidos
+                    </h2>
+                    <div id="ordersList"></div>
+                    <div id="totalCost"></div>
+                    <div style="text-align: center; margin-top: 30px;">
+                        <button class="btn btn-success btn-large" onclick="exportOrders()">
+                            📥 Exportar Lista para Cocina
+                        </button>
+                        <button class="btn btn-primary btn-large" onclick="generatePDF()">
+                            📄 Generar PDF
+                        </button>
+                        <button class="btn btn-primary btn-large" onclick="printOrders()">
+                            🖨️ Imprimir Lista
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Base de datos local
+        let currentMenu = [];
+        let userOrders = {};
+        let currentUser = '';
+        let currentUserFullName = '';
+        let currentWeek = '';
+        let currentThursday = null; // Fecha del jueves seleccionado
+        let communicationMode = '';
+        let isVoiceActive = false;
+        let recognition = null;
+        let isAdminAuthenticated = false;
+        let waitingForName = false;
+        let justOrdered = false;
+        const ADMIN_CODE = '79150361';
+        const YEAR = 2026;
+
+        // Inicializar
+        window.onload = function() {
+            loadFromStorage();
+            populateThursdays();
+            initVoiceRecognition();
+            checkAdminAuth();
+            cleanExpiredMenus(); // Limpiar menús expirados al iniciar
+        };
+
+        function verifyAdminCode() {
+            const code = document.getElementById('adminCode').value;
+            const errorDiv = document.getElementById('loginError');
+            
+            if (code === ADMIN_CODE) {
+                isAdminAuthenticated = true;
+                localStorage.setItem('zepitaBotAdminAuth', 'true');
+                document.getElementById('adminLogin').style.display = 'none';
+                document.getElementById('adminPanel').style.display = 'block';
+                errorDiv.style.display = 'none';
+            }
